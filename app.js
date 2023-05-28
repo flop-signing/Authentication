@@ -1,3 +1,4 @@
+require('dotenv').config()     /// enable dot.env to protect secret key.
 const express=require('express');
 const ejs=require('ejs');
 const bodyParser=require('body-parser');
@@ -26,8 +27,15 @@ const userSchema=new mongoose.Schema({
 
 // create a secret for encryption 
 // This secret creation part is for Level-2 Encryption
-const secret="Thisisourlittlesecret";
-userSchema.plugin(mongooseEncryption,{secret:secret,encryptedFields: ['password'] });  // if needed to be multiple field then just use comma inside the third bracket.
+//const secret="Thisisourlittlesecret";
+userSchema.plugin(mongooseEncryption,{secret:process.env.SECRET , encryptedFields: ['password'] });  // if needed to be multiple field then just use comma inside the third bracket.
+
+
+
+
+
+////////////////////////////////////////For dot.env /////////////////////////////////////////////////////
+// When we pull our code in github repository then it is not secure the secret key.Because anyone can esasily get the secret key and then decrypted it.The developers can solve this problem using environment variables and environment variable is simple file that we going to keep secret to certain sensitive variables such as keys and API keys.And in here we can do this using very popular dot.env.And to do that we need require('dotenv').config()..Create a .env file in the root directory of the project .And add environment specific variables on new lines in the form of NAME=VALUE
 
 const User=new mongoose.model("User",userSchema);
 
@@ -81,10 +89,6 @@ app.post('/login',function(req,res)
 })
 
 // Level-1 encryption is when an user put his email and password and regiser then we save the user information in Database.And when user want to login and put his necessary information in the login portal then the system checked his email is available in database or not if available then also check the password and finally permit the user in other page or main portal. UP to this Lavel this is Level-1 Encryption.
-
-
-
-
 
 
 
