@@ -3,7 +3,11 @@ const express=require('express');
 const ejs=require('ejs');
 const bodyParser=require('body-parser');
 const { default: mongoose } = require('mongoose');
-const mongooseEncryption=require('mongoose-encryption');  /// enable mongoose encryption
+const md5=require('md5'); /// Require md5 for implementing Hashing.
+
+
+
+// const mongooseEncryption=require('mongoose-encryption');  /// enable mongoose encryption
 
 const app=express();
 
@@ -28,7 +32,7 @@ const userSchema=new mongoose.Schema({
 // create a secret for encryption 
 // This secret creation part is for Level-2 Encryption
 //const secret="Thisisourlittlesecret";
-userSchema.plugin(mongooseEncryption,{secret:process.env.SECRET , encryptedFields: ['password'] });  // if needed to be multiple field then just use comma inside the third bracket.
+// userSchema.plugin(mongooseEncryption,{secret:process.env.SECRET , encryptedFields: ['password'] });  // if needed to be multiple field then just use comma inside the third bracket.
 
 
 
@@ -46,7 +50,7 @@ app.post('/register',function(req,res)
 {
     const newUser=new User({
         email:req.body.username,
-        password:req.body.password
+        password:md5(req.body.password)  // add hash
     });
     newUser.save().then(function(err)
     {
