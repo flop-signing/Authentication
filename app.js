@@ -1,24 +1,40 @@
-require('dotenv').config()     /// enable dot.env to protect secret key.
+require('dotenv').config()    
 const express=require('express');
 const ejs=require('ejs');
 const bodyParser=require('body-parser');
 const { default: mongoose } = require('mongoose');
-//const md5=require('md5'); /// Require md5 for implementing Hashing.
-const bcrypt=require('bcrypt');   // Add Bcrypt
-const saltRounds = 10;    // Add salt Rounds 
-
-// const mongooseEncryption=require('mongoose-encryption');  /// enable mongoose encryption
+const session=require('express-session');
+const passport=require('passport');
+const passportLocalMongoose=require('passport-local-mongoose');
 
 const app=express();
 
+//////////////////////////////Using Passport to add cookies and Sessions ////////////////////////////
+
+
 app.set('view engine','ejs');
-app.use(bodyParser.urlencoded({extended:true}))   /// we told our app to use body-parser
-app.use(express.static("public"))  // tell javascript to serve this static folder.
+app.use(bodyParser.urlencoded({extended:true}))   
+app.use(express.static("public"))  
 
 
-////////////////////////////////////// Level 1 Security /////////////////////////////////////////
+/// //////////////Setup Express Session/////////////////////////
 
-// This is creating an account for the user ans storing the email and password in our database so that when they come back at a later,we can check their email against password and see if we pass them let or not.
+app.set('trust proxy', 1) // trust first proxy
+app.use(session({
+  secret: 'keyboard cat',
+  resave: false,
+  saveUninitialized: true,
+//   cookie: { secure: true }
+}))
+
+////// Initialize and Start Using Passport and Session//////////
+
+app.use(passport.initialize())
+app.use(passport.session())   /// initialize passport.session
+
+// so we first tell our app to use session package and we set it up with some initial configuration.And we next tell our app to use passport and initialize passport package and also session package.
+
+
 
 mongoose.connect("mongodb://localhost:27017/userDB",{useNewUrlParser: true,useUnifiedTopology: true,
 family: 4});
@@ -28,89 +44,90 @@ const userSchema=new mongoose.Schema({
     password:String
 });
 
-
-// create a secret for encryption 
-// This secret creation part is for Level-2 Encryption
-//const secret="Thisisourlittlesecret";
-// userSchema.plugin(mongooseEncryption,{secret:process.env.SECRET , encryptedFields: ['password'] });  // if needed to be multiple field then just use comma inside the third bracket.
-
-
-
-
-
-////////////////////////////////////////For dot.env /////////////////////////////////////////////////////
-// When we pull our code in github repository then it is not secure the secret key.Because anyone can esasily get the secret key and then decrypted it.The developers can solve this problem using environment variables and environment variable is simple file that we going to keep secret to certain sensitive variables such as keys and API keys.And in here we can do this using very popular dot.env.And to do that we need require('dotenv').config()..Create a .env file in the root directory of the project .And add environment specific variables on new lines in the form of NAME=VALUE
+// Use mongoose schema to use passport local mongoose.We use hash and salt our password and to save our users into our mongoDB Database. 
+userSchema.plugin(passportLocalMongoose); 
 
 const User=new mongoose.model("User",userSchema);
 
 
+///// Passport Local Configuration  /////////////////
+
+// Here at first we create a strategy to authenticates users using their username and password and also to serialize and deserilise our user.And the serialise and deserialise are necessary when we only use session.
+
+// When we use serialise stuffs the message namely our users identifications into the cookie and then we deserialise it basically allows passpport to be able to cramble the cookie and discover the message inside which is who this user is and all of their identification so that we can authenticate them on our server.
+
+passport.use(User.createStrategy());
+passport.serializeUser(User.serializeUser());
+passport.deserializeUser(User.deserializeUser());
+
+
 ////////////////////////////////////// Register Route ////////////////////////////////
+
+app.get('/secrets',function(req,res)
+{
+    if(req.isAuthenticated())
+    {
+        res.render('secrets');
+    }
+    else
+    {
+        res.redirect('login');
+    }
+})
+
 
 app.post('/register',function(req,res)
 {
 
-    /// Adding Bcrypt fucntions
-
-    bcrypt.hash(req.body.password,saltRounds, function(err, hash) {
-        // Store hash in your password DB.
-        const newUser=new User({
-            email:req.body.username,
-            password:hash  // add hash that we generate with salt
-        });
-        newUser.save().then(function(err)
+    // user.register comes from passport local mongoose package.And it is only because of the package that we can avoid creating our new user,saving our user and interacting with mongoose directly.Instead we going to be using the passport-local-mongoose package as our middleman to handle all of that for us.
+    User.register({username:req.body.username},req.body.password,function(err,user)
+    {
+        if(err)
         {
-            if(!err)
-            {
-                res.render('secrets');
-            }
-            else
-            {
-                console.log(err);
-            }
-        });
-    });
+            console.log(err);
+            res.redirect('/register');
+        }
+        else{
 
- 
+            // if  there is no error then we authenticate our user by using passport and the type of authendicate we use is local 
+            passport.authenticate("local")(req,res,function(){
+
+                // this callback is only triggered if authentication is successful. And we manage to successfully setup a cookie that saved their current login session.So you have to check to see if they are logged in or not logged.
+                res.redirect('/secrets');
+            })
+        }
+    })
+
+});
+
+app.get('/logout',function(req,res)
+{
+    req.logout(function(){});
+    res.redirect('/');
 });
 
 
-
-/////////////////////////////// Check User Data from DataBase ////////////////////////////////////////
-
-// In case of security level-2 mongoose encryption is autometically decrypted password when we use findOne 
-
 app.post('/login',function(req,res)
 {
-    const username=req.body.username;
-    const password=req.body.password;
-
-    User.findOne({email:username}).then(function(docs,err)
+    const user=new User({
+        username: req.body.username,
+        password: req.body.password
+    });
+    // this method is also comes from passport.This new user is comes from login credential
+    req.login(user,function(err)
     {
         if(err)
         {
             console.log(err);
         }
-        else
-        {
-            bcrypt.compare(password, docs.password, function(err, result) {
-
-                // here the password is that the user give input when login and the docs.password is if this password is stored or not when the user registering.
-
-                if(result===true)
-                {
-                    res.render('secrets');
-                }
-                
-            });
-
-           
+        else{
+            passport.authenticate("local")(req,res,function(){
+                res.redirect('/secrets');
+            })
         }
     })
+    
 })
-
-// Level-1 encryption is when an user put his email and password and regiser then we save the user information in Database.And when user want to login and put his necessary information in the login portal then the system checked his email is available in database or not if available then also check the password and finally permit the user in other page or main portal. UP to this Lavel this is Level-1 Encryption.
-
-
 
 
 app.get('/',function(req,res)
